@@ -24,7 +24,7 @@ const exampleGetSinglePrice = (symbol: string) =>
     
     yield* Console.log(`
 ${price.symbol}: ${formatPrice(price.price)} ${price.currency}
-Change: ${formatChange(price.change || 0, (price as any).change_percent || price.changePercent || 0)}
+Change: ${formatChange(price.change || 0, price.changePercent || 0)}
 Time: ${new Date(Number(price.timestamp)).toLocaleString()}
 `)
     
@@ -50,7 +50,7 @@ const exampleGetMultiplePrices = (symbols: string[]) =>
       yield* Console.log(
         `${price.symbol.padEnd(6)} | ${formatPrice(price.price).padEnd(10)} | ${formatChange(
           price.change || 0,
-          (price as any).change_percent || price.changePercent || 0
+          price.changePercent || 0
         )}`
       )
     }

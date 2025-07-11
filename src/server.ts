@@ -1,6 +1,23 @@
 import * as grpc from "@grpc/grpc-js"
 import * as protoLoader from "@grpc/proto-loader"
 import path from "path"
+import type {
+  handleUnaryCall,
+  handleServerStreamingCall,
+  sendUnaryData,
+  ServerUnaryCall,
+  ServerWritableStream,
+  ServiceError,
+  UntypedServiceImplementation
+} from "@grpc/grpc-js"
+import type {
+  GetStockPriceRequest,
+  GetStockPriceResponse,
+  GetMultipleStockPricesRequest,
+  GetMultipleStockPricesResponse,
+  StreamPriceUpdatesRequest,
+  PriceUpdate
+} from "./generated/proto/stock"
 
 // Mock stock data
 const mockStocks = new Map([
@@ -21,16 +38,19 @@ const generatePrice = (basePrice: number) => {
 const generateChange = () => (Math.random() - 0.5) * 10 // ±5% change
 
 // gRPC service implementation
-const stockService = {
-  GetStockPrice: (call: any, callback: any) => {
+const stockService: UntypedServiceImplementation = {
+  GetStockPrice: ((call: ServerUnaryCall<GetStockPriceRequest, GetStockPriceResponse>, callback: sendUnaryData<GetStockPriceResponse>) => {
     const { symbol } = call.request
     const stock = mockStocks.get(symbol)
     
     if (!stock) {
-      callback({
+      const error: Partial<ServiceError> = {
         code: grpc.status.NOT_FOUND,
-        message: `Stock symbol ${symbol} not found`
-      })
+        message: `Stock symbol ${symbol} not found`,
+        name: 'NotFound',
+        details: ''
+      }
+      callback(error as ServiceError)
       return
     }
 
@@ -45,11 +65,11 @@ const stockService = {
       change: Math.round(change * 100) / 100,
       changePercent: Math.round(change * 10) / 10,
     })
-  },
+  }) as handleUnaryCall<GetStockPriceRequest, GetStockPriceResponse>,
 
-  GetMultipleStockPrices: (call: any, callback: any) => {
+  GetMultipleStockPrices: ((call: ServerUnaryCall<GetMultipleStockPricesRequest, GetMultipleStockPricesResponse>, callback: sendUnaryData<GetMultipleStockPricesResponse>) => {
     const { symbols } = call.request
-    const prices = symbols.map((symbol: string) => {
+    const prices = symbols.map((symbol) => {
       const stock = mockStocks.get(symbol)
       
       if (!stock) {
@@ -77,9 +97,9 @@ const stockService = {
     })
     
     callback(null, { prices })
-  },
+  }) as handleUnaryCall<GetMultipleStockPricesRequest, GetMultipleStockPricesResponse>,
 
-  StreamPriceUpdates: (call: any) => {
+  StreamPriceUpdates: ((call: ServerWritableStream<StreamPriceUpdatesRequest, PriceUpdate>) => {
     const { symbols } = call.request
     
     const interval = setInterval(() => {
@@ -108,7 +128,7 @@ const stockService = {
     call.on('error', () => {
       clearInterval(interval)
     })
-  }
+  }) as handleServerStreamingCall<StreamPriceUpdatesRequest, PriceUpdate>
 }
 
 // Load proto file
@@ -121,7 +141,16 @@ const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
   oneofs: true
 })
 
-const stockProto = grpc.loadPackageDefinition(packageDefinition) as any
+// Type assertion for the loaded package definition
+interface StockProtoPackage {
+  stock: {
+    StockService: {
+      service: grpc.ServiceDefinition
+    }
+  }
+}
+
+const stockProto = grpc.loadPackageDefinition(packageDefinition) as unknown as StockProtoPackage
 
 // Create server
 const server = new grpc.Server()

@@ -2,15 +2,39 @@ import { Effect, Stream } from "effect"
 import * as grpc from "@grpc/grpc-js"
 import * as protoLoader from "@grpc/proto-loader"
 import path from "path"
+import type {
+  ServiceError,
+  Client,
+  ClientReadableStream,
+  requestCallback as UnaryCallback
+} from "@grpc/grpc-js"
 import {
+  GetStockPriceRequest,
   GetStockPriceResponse,
+  GetMultipleStockPricesRequest,
   GetMultipleStockPricesResponse,
+  StreamPriceUpdatesRequest,
   PriceUpdate,
 } from "./generated/proto/stock"
 
+// Type for the loaded stock service client
+interface StockServiceClient extends Client {
+  GetStockPrice: (
+    request: GetStockPriceRequest,
+    callback: UnaryCallback<GetStockPriceResponse>
+  ) => void
+  GetMultipleStockPrices: (
+    request: GetMultipleStockPricesRequest,
+    callback: UnaryCallback<GetMultipleStockPricesResponse>
+  ) => void
+  StreamPriceUpdates: (
+    request: StreamPriceUpdatesRequest
+  ) => ClientReadableStream<PriceUpdate>
+}
+
 // gRPC client wrapper using Effect
 export class StockGrpcClient {
-  private client: any
+  private client: StockServiceClient
 
   constructor(address: string = "localhost:50051") {
     // Load proto file
@@ -23,7 +47,17 @@ export class StockGrpcClient {
       oneofs: true
     })
     
-    const stockProto = grpc.loadPackageDefinition(packageDefinition) as any
+    // Type assertion for the loaded package definition
+    interface StockProtoPackage {
+      stock: {
+        StockService: new (
+          address: string,
+          credentials: grpc.ChannelCredentials
+        ) => StockServiceClient
+      }
+    }
+    
+    const stockProto = grpc.loadPackageDefinition(packageDefinition) as unknown as StockProtoPackage
     
     // Create client
     this.client = new stockProto.stock.StockService(
@@ -37,11 +71,13 @@ export class StockGrpcClient {
       try: () => new Promise<GetStockPriceResponse>((resolve, reject) => {
         this.client.GetStockPrice(
           { symbol },
-          (err: any, response: any) => {
+          (err: ServiceError | null, response?: GetStockPriceResponse) => {
             if (err) {
               reject(new Error(err.message || 'gRPC error'))
-            } else {
+            } else if (response) {
               resolve(response)
+            } else {
+              reject(new Error('No response received'))
             }
           }
         )
@@ -55,11 +91,13 @@ export class StockGrpcClient {
       try: () => new Promise<GetMultipleStockPricesResponse>((resolve, reject) => {
         this.client.GetMultipleStockPrices(
           { symbols },
-          (err: any, response: any) => {
+          (err: ServiceError | null, response?: GetMultipleStockPricesResponse) => {
             if (err) {
               reject(new Error(err.message || 'gRPC error'))
-            } else {
+            } else if (response) {
               resolve(response)
+            } else {
+              reject(new Error('No response received'))
             }
           }
         )
@@ -76,8 +114,8 @@ export class StockGrpcClient {
         emit.single(update)
       })
       
-      call.on('error', (err: any) => {
-        emit.fail(new Error(err.message || 'Stream error'))
+      call.on('error', (err: Error) => {
+        emit.fail(err)
       })
       
       call.on('end', () => {
