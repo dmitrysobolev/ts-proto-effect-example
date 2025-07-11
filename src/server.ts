@@ -1,22 +1,12 @@
-import * as grpc from "@grpc/grpc-js"
-import * as protoLoader from "@grpc/proto-loader"
-import path from "path"
-import type {
-  handleUnaryCall,
-  handleServerStreamingCall,
-  sendUnaryData,
-  ServerUnaryCall,
-  ServerWritableStream,
-  ServiceError,
-  UntypedServiceImplementation
-} from "@grpc/grpc-js"
-import type {
+import { createServer } from "nice-grpc"
+import {
+  StockServiceDefinition,
+  StockServiceImplementation,
   GetStockPriceRequest,
   GetStockPriceResponse,
   GetMultipleStockPricesRequest,
   GetMultipleStockPricesResponse,
   StreamPriceUpdatesRequest,
-  PriceUpdate
 } from "./generated/proto/stock"
 
 // Mock stock data
@@ -38,37 +28,30 @@ const generatePrice = (basePrice: number) => {
 const generateChange = () => (Math.random() - 0.5) * 10 // ±5% change
 
 // gRPC service implementation
-const stockService: UntypedServiceImplementation = {
-  GetStockPrice: ((call: ServerUnaryCall<GetStockPriceRequest, GetStockPriceResponse>, callback: sendUnaryData<GetStockPriceResponse>) => {
-    const { symbol } = call.request
+const stockServiceImpl: StockServiceImplementation = {
+  async getStockPrice(request: GetStockPriceRequest): Promise<GetStockPriceResponse> {
+    const { symbol } = request
     const stock = mockStocks.get(symbol)
     
     if (!stock) {
-      const error: Partial<ServiceError> = {
-        code: grpc.status.NOT_FOUND,
-        message: `Stock symbol ${symbol} not found`,
-        name: 'NotFound',
-        details: ''
-      }
-      callback(error as ServiceError)
-      return
+      throw new Error(`Stock symbol ${symbol} not found`)
     }
 
     const price = generatePrice(stock.basePrice)
     const change = generateChange()
     
-    callback(null, {
+    return {
       symbol: symbol,
       price: Math.round(price * 100) / 100,
       currency: "USD",
       timestamp: Date.now(),
       change: Math.round(change * 100) / 100,
       changePercent: Math.round(change * 10) / 10,
-    })
-  }) as handleUnaryCall<GetStockPriceRequest, GetStockPriceResponse>,
+    }
+  },
 
-  GetMultipleStockPrices: ((call: ServerUnaryCall<GetMultipleStockPricesRequest, GetMultipleStockPricesResponse>, callback: sendUnaryData<GetMultipleStockPricesResponse>) => {
-    const { symbols } = call.request
+  async getMultipleStockPrices(request: GetMultipleStockPricesRequest): Promise<GetMultipleStockPricesResponse> {
+    const { symbols } = request
     const prices = symbols.map((symbol) => {
       const stock = mockStocks.get(symbol)
       
@@ -96,85 +79,51 @@ const stockService: UntypedServiceImplementation = {
       }
     })
     
-    callback(null, { prices })
-  }) as handleUnaryCall<GetMultipleStockPricesRequest, GetMultipleStockPricesResponse>,
+    return { prices }
+  },
 
-  StreamPriceUpdates: ((call: ServerWritableStream<StreamPriceUpdatesRequest, PriceUpdate>) => {
-    const { symbols } = call.request
+  async *streamPriceUpdates(request: StreamPriceUpdatesRequest) {
+    const { symbols } = request
     
-    const interval = setInterval(() => {
+    while (true) {
+      await new Promise(resolve => setTimeout(resolve, 1000))
+      
       const symbol = symbols[Math.floor(Math.random() * symbols.length)]
       const stock = symbol ? mockStocks.get(symbol) : undefined
       
       if (!stock || !symbol) {
-        return
+        continue
       }
       
       const price = generatePrice(stock.basePrice)
       const volume = Math.floor(Math.random() * 1000000)
       
-      call.write({
+      yield {
         symbol,
         price: Math.round(price * 100) / 100,
         timestamp: Date.now(),
         volume,
-      })
-    }, 1000)
-    
-    call.on('cancelled', () => {
-      clearInterval(interval)
-    })
-    
-    call.on('error', () => {
-      clearInterval(interval)
-    })
-  }) as handleServerStreamingCall<StreamPriceUpdatesRequest, PriceUpdate>
-}
-
-// Load proto file
-const PROTO_PATH = path.join(__dirname, '../proto/stock.proto')
-const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
-  keepCase: true,
-  longs: String,
-  enums: String,
-  defaults: true,
-  oneofs: true
-})
-
-// Type assertion for the loaded package definition
-interface StockProtoPackage {
-  stock: {
-    StockService: {
-      service: grpc.ServiceDefinition
+      }
     }
   }
 }
 
-const stockProto = grpc.loadPackageDefinition(packageDefinition) as unknown as StockProtoPackage
+// Create and start server
+async function startServer() {
+  const server = createServer()
+  
+  server.add(StockServiceDefinition, stockServiceImpl)
+  
+  const port = 50051
+  await server.listen(`0.0.0.0:${port}`)
+  
+  console.log(`gRPC Stock Price Server listening on port ${port}`)
+  console.log("Using real protobuf binary serialization")
+  console.log("Service: StockService")
+  console.log("Methods:")
+  console.log("  - GetStockPrice (unary)")
+  console.log("  - GetMultipleStockPrices (unary)")
+  console.log("  - StreamPriceUpdates (server streaming)")
+}
 
-// Create server
-const server = new grpc.Server()
-
-// Add service
-server.addService(stockProto.stock.StockService.service, stockService)
-
-// Start server
-const port = 50051
-server.bindAsync(
-  `0.0.0.0:${port}`,
-  grpc.ServerCredentials.createInsecure(),
-  (err, port) => {
-    if (err) {
-      console.error('Failed to start server:', err)
-      return
-    }
-    
-    console.log(`gRPC Stock Price Server listening on port ${port}`)
-    console.log("Using real protobuf binary serialization")
-    console.log("Service: StockService")
-    console.log("Methods:")
-    console.log("  - GetStockPrice (unary)")
-    console.log("  - GetMultipleStockPrices (unary)")
-    console.log("  - StreamPriceUpdates (server streaming)")
-  }
-)
+startServer().catch(console.error)
