@@ -7,8 +7,8 @@
     "proto:generate": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=outputServices=nice-grpc,outputServices=generic-definitions,useExactTypes=false ./proto/*.proto",
     "build": "tsc",
     "dev": "ts-node",
-    "server": "ts-node src/server.ts",
-    "client": "ts-node src/example.ts"
+    "simple-server": "ts-node src/simple-server.ts",
+    "simple-client": "ts-node src/simple-example.ts"
   },
   "keywords": [],
   "author": "",
@@ -24,6 +24,8 @@
   "dependencies": {
     "@effect/platform": "^0.87.12",
     "@effect/platform-node": "^0.89.5",
-    "effect": "^3.16.12"
+    "@effect/schema": "^0.75.5",
+    "effect": "^3.16.12",
+    "nice-grpc-common": "^2.0.2"
   }
 }

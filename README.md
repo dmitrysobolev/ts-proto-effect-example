@@ -18,9 +18,9 @@ This project demonstrates how to use Protocol Buffers (protobuf) with TypeScript
 │   ├── generated/           # Generated TypeScript code from protobuf
 │   │   └── proto/
 │   │       └── stock.ts
-│   ├── server.ts           # HTTP server implementation
-│   ├── client.ts           # HTTP client implementation
-│   └── example.ts          # Example usage
+│   ├── simple-server.ts    # HTTP server implementation
+│   ├── simple-client.ts    # HTTP client implementation
+│   └── simple-example.ts   # Example usage
 ├── package.json
 └── tsconfig.json
 ```
@@ -55,12 +55,12 @@ The server provides three endpoints:
 
 3. Start the server:
    ```bash
-   npm run server
+   npm run simple-server
    ```
 
 4. In another terminal, run the client example:
    ```bash
-   npm run client
+   npm run simple-client
    ```
 
 ## How It Works
@@ -98,8 +98,8 @@ Effect provides:
 
 - `npm run proto:generate` - Generate TypeScript from protobuf files
 - `npm run build` - Compile TypeScript
-- `npm run server` - Start the HTTP server
-- `npm run client` - Run the example client
+- `npm run simple-server` - Start the HTTP server
+- `npm run simple-client` - Run the example client
 
 ## Mock Data
 
