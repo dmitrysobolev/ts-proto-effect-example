@@ -4,7 +4,7 @@ import {
   exampleGetSinglePrice,
   exampleGetMultiplePrices,
   exampleStreamPrices,
-} from "./simple-client"
+} from "./client"
 
 // Main example program
 const program = Effect.gen(function* () {
@@ -26,5 +26,5 @@ const program = Effect.gen(function* () {
 })
 
 // Run the example
-// Make sure the server is running first: npm run simple-server
+// Make sure the server is running first: npm run server
 NodeRuntime.runMain(program)
