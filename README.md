@@ -60,7 +60,7 @@ The server provides three endpoints:
 
 4. In another terminal, run the client example:
    ```bash
-   npm run client
+   npm run example
    ```
 
 ## How It Works
@@ -99,7 +99,7 @@ Effect provides:
 - `npm run proto:generate` - Generate TypeScript from protobuf files
 - `npm run build` - Compile TypeScript
 - `npm run server` - Start the HTTP server
-- `npm run client` - Run the example client
+- `npm run example` - Run the example client
 
 ## Mock Data
 
