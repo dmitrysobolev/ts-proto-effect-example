@@ -27,7 +27,7 @@ This project demonstrates how to use Protocol Buffers (protobuf) with TypeScript
 
 ## API Endpoints
 
-The server provides three endpoints:
+The server runs on port 3001 and provides three endpoints:
 
 1. **Get Single Stock Price**
    - `POST /api/stock/price`
