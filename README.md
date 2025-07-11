@@ -19,8 +19,8 @@ This project demonstrates how to use Protocol Buffers (protobuf) with TypeScript
 │   │   └── proto/
 │   │       └── stock.ts
 │   ├── server.ts           # HTTP server implementation
-│   ├── client.ts           # HTTP client implementation
-│   └── example.ts          # Example usage
+│   ├── client.ts           # HTTP client library (StockClient class)
+│   └── example.ts          # Example usage demonstrating all features
 ├── package.json
 └── tsconfig.json
 ```

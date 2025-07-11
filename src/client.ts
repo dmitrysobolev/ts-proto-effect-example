@@ -1,4 +1,4 @@
-import { Effect, Stream, Console, Schema } from "effect"
+import { Effect, Stream, Schema } from "effect"
 import {
   GetStockPriceRequest,
   GetStockPriceResponse,
@@ -23,7 +23,7 @@ const MultiplePricesSchema = Schema.Struct({
 
 // Simple HTTP client using fetch
 export class StockClient {
-  constructor(private readonly baseUrl: string = "http://localhost:3000") {}
+  constructor(private readonly baseUrl: string = "http://localhost:3001") {}
 
   getStockPrice(symbol: string): Effect.Effect<GetStockPriceResponse, Error> {
     return Effect.tryPromise({
@@ -126,77 +126,3 @@ export class StockClient {
   }
 }
 
-// Helper functions for pretty printing
-const formatPrice = (price: number) => `$${price.toFixed(2)}`
-const formatChange = (change: number, changePercent: number) => {
-  const sign = change >= 0 ? "+" : ""
-  return `${sign}${change.toFixed(2)} (${sign}${changePercent.toFixed(1)}%)`
-}
-
-// Example client usage functions
-export const exampleGetSinglePrice = (symbol: string) =>
-  Effect.gen(function* () {
-    const client = new StockClient()
-    
-    yield* Console.log(`Fetching price for ${symbol}...`)
-    
-    const price = yield* client.getStockPrice(symbol).pipe(
-      Effect.catchAll((error) => Effect.die(`Failed to fetch price: ${error}`))
-    )
-    
-    yield* Console.log(`
-${price.symbol}: ${formatPrice(price.price)} ${price.currency}
-Change: ${formatChange(price.change, price.changePercent)}
-Time: ${new Date(price.timestamp).toLocaleString()}
-`)
-    
-    return price
-  })
-
-export const exampleGetMultiplePrices = (symbols: string[]) =>
-  Effect.gen(function* () {
-    const client = new StockClient()
-    
-    yield* Console.log(`Fetching prices for: ${symbols.join(", ")}...`)
-    
-    const response = yield* client.getMultipleStockPrices(symbols).pipe(
-      Effect.catchAll((error) => Effect.die(`Failed to fetch prices: ${error}`))
-    )
-    
-    yield* Console.log("\nStock Prices:")
-    yield* Console.log("=".repeat(50))
-    
-    for (const price of response.prices) {
-      yield* Console.log(
-        `${price.symbol.padEnd(6)} | ${formatPrice(price.price).padEnd(10)} | ${formatChange(
-          price.change,
-          price.changePercent
-        )}`
-      )
-    }
-    
-    return response
-  })
-
-export const exampleStreamPrices = (symbols: string[], duration: number = 10000) =>
-  Effect.gen(function* () {
-    const client = new StockClient()
-    
-    yield* Console.log(`Streaming prices for: ${symbols.join(", ")}`)
-    yield* Console.log(`Duration: ${duration / 1000} seconds`)
-    yield* Console.log("=".repeat(50))
-    
-    const stream = client.streamPriceUpdates(symbols).pipe(
-      Stream.tap((update) =>
-        Console.log(
-          `[${new Date(update.timestamp).toLocaleTimeString()}] ${
-            update.symbol
-          }: ${formatPrice(update.price)} | Volume: ${update.volume.toLocaleString()}`
-        )
-      ),
-      Stream.interruptAfter(`${duration} millis`)
-    )
-    
-    yield* Stream.runDrain(stream)
-    yield* Console.log("\nStream ended")
-  })

@@ -196,7 +196,7 @@ const handleRequest = (req: Http.IncomingMessage, res: Http.ServerResponse) => {
 // Create and start server
 const server = Http.createServer(handleRequest)
 
-const PORT = 3000
+const PORT = 3001
 server.listen(PORT, () => {
   console.log(`Stock Price API Server running on port ${PORT}`)
   console.log("Available endpoints:")
