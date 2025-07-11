@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "proto:generate": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=outputServices=nice-grpc,outputServices=generic-definitions,useExactTypes=false ./proto/*.proto",
+    "proto:generate": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=outputServices=nice-grpc,outputClientImpl=false,outputJsonMethods=false,useExactTypes=false,useAbortSignal=true ./proto/*.proto",
     "build": "tsc",
     "dev": "ts-node",
     "server": "ts-node src/server.ts",
@@ -25,7 +25,11 @@
     "@effect/platform": "^0.87.12",
     "@effect/platform-node": "^0.89.5",
     "@effect/schema": "^0.75.5",
+    "@grpc/grpc-js": "^1.13.4",
+    "@grpc/proto-loader": "^0.7.15",
     "effect": "^3.16.12",
+    "nice-grpc": "^2.1.12",
+    "nice-grpc-client-middleware-deadline": "^2.0.15",
     "nice-grpc-common": "^2.0.2"
   }
 }

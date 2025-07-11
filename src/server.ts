@@ -1,12 +1,6 @@
-import { Effect, Stream, Random, Schema } from "effect"
-import * as Http from "http"
-import {
-  GetStockPriceRequest,
-  GetStockPriceResponse,
-  GetMultipleStockPricesRequest,
-  GetMultipleStockPricesResponse,
-  PriceUpdate,
-} from "./generated/proto/stock"
+import * as grpc from "@grpc/grpc-js"
+import * as protoLoader from "@grpc/proto-loader"
+import path from "path"
 
 // Mock stock data
 const mockStocks = new Map([
@@ -18,35 +12,62 @@ const mockStocks = new Map([
 ])
 
 // Generate random price fluctuation
-const generatePrice = (basePrice: number) =>
-  Random.next.pipe(
-    Effect.map((random) => {
-      const variation = (random - 0.5) * 0.1 // ±5% variation
-      return basePrice * (1 + variation)
-    })
-  )
+const generatePrice = (basePrice: number) => {
+  const variation = (Math.random() - 0.5) * 0.1 // ±5% variation
+  return basePrice * (1 + variation)
+}
 
 // Generate random change percentage
-const generateChange = () =>
-  Random.next.pipe(
-    Effect.map((random) => (random - 0.5) * 10) // ±5% change
-  )
+const generateChange = () => (Math.random() - 0.5) * 10 // ±5% change
 
-// StockService implementation
-class StockService {
-  static getStockPrice(request: GetStockPriceRequest): Effect.Effect<GetStockPriceResponse, Error> {
-    return Effect.gen(function* () {
-      const stock = mockStocks.get(request.symbol)
+// gRPC service implementation
+const stockService = {
+  GetStockPrice: (call: any, callback: any) => {
+    const { symbol } = call.request
+    const stock = mockStocks.get(symbol)
+    
+    if (!stock) {
+      callback({
+        code: grpc.status.NOT_FOUND,
+        message: `Stock symbol ${symbol} not found`
+      })
+      return
+    }
+
+    const price = generatePrice(stock.basePrice)
+    const change = generateChange()
+    
+    callback(null, {
+      symbol: symbol,
+      price: Math.round(price * 100) / 100,
+      currency: "USD",
+      timestamp: Date.now(),
+      change: Math.round(change * 100) / 100,
+      changePercent: Math.round(change * 10) / 10,
+    })
+  },
+
+  GetMultipleStockPrices: (call: any, callback: any) => {
+    const { symbols } = call.request
+    const prices = symbols.map((symbol: string) => {
+      const stock = mockStocks.get(symbol)
       
       if (!stock) {
-        return yield* Effect.fail(new Error(`Stock symbol ${request.symbol} not found`))
+        return {
+          symbol,
+          price: 0,
+          currency: "USD",
+          timestamp: Date.now(),
+          change: 0,
+          changePercent: 0,
+        }
       }
 
-      const price = yield* generatePrice(stock.basePrice)
-      const change = yield* generateChange()
+      const price = generatePrice(stock.basePrice)
+      const change = generateChange()
       
       return {
-        symbol: request.symbol,
+        symbol,
         price: Math.round(price * 100) / 100,
         currency: "USD",
         timestamp: Date.now(),
@@ -54,153 +75,77 @@ class StockService {
         changePercent: Math.round(change * 10) / 10,
       }
     })
-  }
+    
+    callback(null, { prices })
+  },
 
-  static getMultipleStockPrices(request: GetMultipleStockPricesRequest): Effect.Effect<GetMultipleStockPricesResponse, Error> {
-    return Effect.gen(function* () {
-      const prices = yield* Effect.all(
-        request.symbols.map((symbol) =>
-          StockService.getStockPrice({ symbol }).pipe(
-            Effect.catchAll(() =>
-              Effect.succeed({
-                symbol,
-                price: 0,
-                currency: "USD",
-                timestamp: Date.now(),
-                change: 0,
-                changePercent: 0,
-              })
-            )
-          )
-        )
-      )
+  StreamPriceUpdates: (call: any) => {
+    const { symbols } = call.request
+    
+    const interval = setInterval(() => {
+      const symbol = symbols[Math.floor(Math.random() * symbols.length)]
+      const stock = symbol ? mockStocks.get(symbol) : undefined
       
-      return { prices }
-    })
-  }
-
-  static streamPriceUpdates(symbols: string[]): Stream.Stream<PriceUpdate, Error> {
-    return Stream.repeatEffect(
-      Effect.gen(function* () {
-        yield* Effect.sleep("1 second")
-        
-        const symbol = symbols[Math.floor(Math.random() * symbols.length)] || ""
-        const stock = mockStocks.get(symbol)
-        
-        if (!stock) {
-          return null
-        }
-        
-        const price = yield* generatePrice(stock.basePrice)
-        const volume = yield* Random.next.pipe(Effect.map((r) => Math.floor(r * 1000000)))
-        
-        return {
-          symbol,
-          price: Math.round(price * 100) / 100,
-          timestamp: Date.now(),
-          volume,
-        }
+      if (!stock || !symbol) {
+        return
+      }
+      
+      const price = generatePrice(stock.basePrice)
+      const volume = Math.floor(Math.random() * 1000000)
+      
+      call.write({
+        symbol,
+        price: Math.round(price * 100) / 100,
+        timestamp: Date.now(),
+        volume,
       })
-    ).pipe(
-      Stream.filter((update): update is PriceUpdate => update !== null)
-    )
+    }, 1000)
+    
+    call.on('cancelled', () => {
+      clearInterval(interval)
+    })
+    
+    call.on('error', () => {
+      clearInterval(interval)
+    })
   }
 }
 
-// Request schemas
-const StockPriceRequestSchema = Schema.Struct({
-  symbol: Schema.String,
+// Load proto file
+const PROTO_PATH = path.join(__dirname, '../proto/stock.proto')
+const packageDefinition = protoLoader.loadSync(PROTO_PATH, {
+  keepCase: true,
+  longs: String,
+  enums: String,
+  defaults: true,
+  oneofs: true
 })
 
-const MultiplePricesRequestSchema = Schema.Struct({
-  symbols: Schema.Array(Schema.String),
-})
+const stockProto = grpc.loadPackageDefinition(packageDefinition) as any
 
-// HTTP request handler
-const handleRequest = (req: Http.IncomingMessage, res: Http.ServerResponse) => {
-  const url = new URL(req.url || '/', `http://${req.headers.host}`)
-  
-  if (req.method === 'POST' && url.pathname === '/api/stock/price') {
-    let body = ''
-    req.on('data', chunk => body += chunk)
-    req.on('end', () => {
-      const program = Effect.gen(function* () {
-        const data = yield* Schema.decodeUnknown(StockPriceRequestSchema)(JSON.parse(body))
-        const result = yield* StockService.getStockPrice(data)
-        
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify(result))
-      }).pipe(
-        Effect.catchAll((error) => Effect.sync(() => {
-          res.writeHead(400, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: String(error) }))
-        }))
-      )
-      
-      Effect.runPromise(program)
-    })
-  }
-  else if (req.method === 'POST' && url.pathname === '/api/stock/prices') {
-    let body = ''
-    req.on('data', chunk => body += chunk)
-    req.on('end', () => {
-      const program = Effect.gen(function* () {
-        const data = yield* Schema.decodeUnknown(MultiplePricesRequestSchema)(JSON.parse(body))
-        const result = yield* StockService.getMultipleStockPrices({ symbols: [...data.symbols] })
-        
-        res.writeHead(200, { 'Content-Type': 'application/json' })
-        res.end(JSON.stringify(result))
-      }).pipe(
-        Effect.catchAll((error) => Effect.sync(() => {
-          res.writeHead(400, { 'Content-Type': 'application/json' })
-          res.end(JSON.stringify({ error: String(error) }))
-        }))
-      )
-      
-      Effect.runPromise(program)
-    })
-  }
-  else if (req.method === 'GET' && url.pathname === '/api/stock/stream') {
-    const symbols = url.searchParams.get('symbols')?.split(',') || []
-    
-    if (symbols.length === 0) {
-      res.writeHead(400, { 'Content-Type': 'application/json' })
-      res.end(JSON.stringify({ error: 'No symbols provided' }))
+// Create server
+const server = new grpc.Server()
+
+// Add service
+server.addService(stockProto.stock.StockService.service, stockService)
+
+// Start server
+const port = 50051
+server.bindAsync(
+  `0.0.0.0:${port}`,
+  grpc.ServerCredentials.createInsecure(),
+  (err, port) => {
+    if (err) {
+      console.error('Failed to start server:', err)
       return
     }
     
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    })
-    
-    const stream = StockService.streamPriceUpdates(symbols).pipe(
-      Stream.map(update => `data: ${JSON.stringify(update)}\n\n`),
-      Stream.encodeText,
-      Stream.runForEach(chunk => Effect.sync(() => res.write(chunk)))
-    )
-    
-    Effect.runPromise(stream).catch(() => {})
-    
-    req.on('close', () => {
-      res.end()
-    })
+    console.log(`gRPC Stock Price Server listening on port ${port}`)
+    console.log("Using real protobuf binary serialization")
+    console.log("Service: StockService")
+    console.log("Methods:")
+    console.log("  - GetStockPrice (unary)")
+    console.log("  - GetMultipleStockPrices (unary)")
+    console.log("  - StreamPriceUpdates (server streaming)")
   }
-  else {
-    res.writeHead(404, { 'Content-Type': 'text/plain' })
-    res.end('Not Found')
-  }
-}
-
-// Create and start server
-const server = Http.createServer(handleRequest)
-
-const PORT = 3001
-server.listen(PORT, () => {
-  console.log(`Stock Price API Server running on port ${PORT}`)
-  console.log("Available endpoints:")
-  console.log("  POST /api/stock/price - Get single stock price")
-  console.log("  POST /api/stock/prices - Get multiple stock prices")
-  console.log("  GET /api/stock/stream?symbols=AAPL,GOOGL - Stream price updates")
-})
+)

@@ -1,13 +1,14 @@
-# TypeScript Protobuf with Effect Example
+# TypeScript gRPC with Protobuf and Effect Example
 
-This project demonstrates how to use Protocol Buffers (protobuf) with TypeScript and the Effect library to build a simple stock price API.
+This project demonstrates how to use gRPC with Protocol Buffers (protobuf) and the Effect library in TypeScript to build a stock price API.
 
 ## Features
 
-- **Protocol Buffers**: Type-safe message serialization
+- **gRPC**: High-performance RPC framework using HTTP/2
+- **Protocol Buffers**: Binary serialization for efficient data transfer
 - **Effect**: Functional programming with powerful error handling and streaming
-- **TypeScript**: Full type safety across the stack
-- **HTTP Server/Client**: RESTful API with streaming support
+- **TypeScript**: Full type safety with generated types from protobuf
+- **Streaming**: Real-time price updates using gRPC server streaming
 
 ## Project Structure
 
@@ -18,28 +19,28 @@ This project demonstrates how to use Protocol Buffers (protobuf) with TypeScript
 │   ├── generated/           # Generated TypeScript code from protobuf
 │   │   └── proto/
 │   │       └── stock.ts
-│   ├── server.ts           # HTTP server implementation
-│   ├── client.ts           # HTTP client library (StockClient class)
+│   ├── server.ts           # gRPC server implementation
+│   ├── client.ts           # gRPC client library (StockGrpcClient class)
 │   └── example.ts          # Example usage demonstrating all features
 ├── package.json
 └── tsconfig.json
 ```
 
-## API Endpoints
+## gRPC Service Methods
 
-The server runs on port 3001 and provides three endpoints:
+The server runs on port 50051 and provides three gRPC methods:
 
-1. **Get Single Stock Price**
-   - `POST /api/stock/price`
-   - Body: `{ "symbol": "AAPL" }`
+1. **GetStockPrice** (Unary RPC)
+   - Request: `{ symbol: "AAPL" }`
+   - Response: Stock price information
 
-2. **Get Multiple Stock Prices**
-   - `POST /api/stock/prices`
-   - Body: `{ "symbols": ["AAPL", "GOOGL", "MSFT"] }`
+2. **GetMultipleStockPrices** (Unary RPC)
+   - Request: `{ symbols: ["AAPL", "GOOGL", "MSFT"] }`
+   - Response: Array of stock prices
 
-3. **Stream Price Updates**
-   - `GET /api/stock/stream?symbols=AAPL,GOOGL`
-   - Returns Server-Sent Events stream
+3. **StreamPriceUpdates** (Server Streaming RPC)
+   - Request: `{ symbols: ["AAPL", "GOOGL"] }`
+   - Response: Stream of real-time price updates
 
 ## Getting Started
 
@@ -53,12 +54,12 @@ The server runs on port 3001 and provides three endpoints:
    npm run proto:generate
    ```
 
-3. Start the server:
+3. Start the gRPC server:
    ```bash
    npm run server
    ```
 
-4. In another terminal, run the client example:
+4. In another terminal, run the example client:
    ```bash
    npm run example
    ```
@@ -67,38 +68,32 @@ The server runs on port 3001 and provides three endpoints:
 
 ### Protobuf Schema
 
-The `stock.proto` file defines the service and message types:
-- `StockService`: The gRPC service definition
-- Request/Response messages for each RPC method
+The `stock.proto` file defines:
+- Service definition with RPC methods
+- Request/Response message types
+- Uses binary serialization (not JSON)
 
 ### Server Implementation
 
-The server uses Effect to:
-- Handle HTTP requests with type-safe routing
-- Generate mock stock prices with random fluctuations
-- Stream real-time updates using Server-Sent Events
+The gRPC server:
+- Uses `@grpc/grpc-js` for the gRPC implementation
+- Loads protobuf definitions dynamically
+- Provides mock stock data with random price fluctuations
+- Supports streaming for real-time updates
 
 ### Client Implementation
 
-The client demonstrates:
-- Type-safe HTTP requests using Effect
-- Response validation with schemas
-- Streaming data consumption
+The client uses Effect to provide:
+- Type-safe gRPC method calls
 - Error handling with Effect
-
-### Effect Integration
-
-Effect provides:
-- Composable error handling
-- Resource management (scoped HTTP connections)
 - Stream processing for real-time data
-- Dependency injection with layers
+- Resource cleanup with `close()` method
 
 ## Available Scripts
 
 - `npm run proto:generate` - Generate TypeScript from protobuf files
 - `npm run build` - Compile TypeScript
-- `npm run server` - Start the HTTP server
+- `npm run server` - Start the gRPC server
 - `npm run example` - Run the example client
 
 ## Mock Data
@@ -111,3 +106,11 @@ The server includes mock data for these stock symbols:
 - TSLA (Tesla)
 
 Prices fluctuate randomly by ±5% from their base values.
+
+## Why gRPC with Protobuf?
+
+- **Binary serialization**: More efficient than JSON
+- **Strong typing**: Generated TypeScript types from proto files
+- **Streaming support**: Built-in support for server/client streaming
+- **Performance**: HTTP/2 with multiplexing and header compression
+- **Cross-language**: Can generate clients for multiple languages
