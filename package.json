@@ -1,0 +1,29 @@
+{
+  "name": "ts-proto-effect-example",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "proto:generate": "protoc --plugin=./node_modules/.bin/protoc-gen-ts_proto --ts_proto_out=./src/generated --ts_proto_opt=outputServices=nice-grpc,outputServices=generic-definitions,useExactTypes=false ./proto/*.proto",
+    "build": "tsc",
+    "dev": "ts-node",
+    "server": "ts-node src/server.ts",
+    "client": "ts-node src/example.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "devDependencies": {
+    "@types/node": "^24.0.13",
+    "protobufjs": "^7.5.3",
+    "ts-node": "^10.9.2",
+    "ts-proto": "^2.7.5",
+    "typescript": "^5.8.3"
+  },
+  "dependencies": {
+    "@effect/platform": "^0.87.12",
+    "@effect/platform-node": "^0.89.5",
+    "effect": "^3.16.12"
+  }
+}

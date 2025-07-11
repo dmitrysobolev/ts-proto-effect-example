@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+package stock;
+
+// Service for retrieving stock prices
+service StockService {
+  // Get current price for a single stock symbol
+  rpc GetStockPrice(GetStockPriceRequest) returns (GetStockPriceResponse);
+  
+  // Get prices for multiple stock symbols
+  rpc GetMultipleStockPrices(GetMultipleStockPricesRequest) returns (GetMultipleStockPricesResponse);
+  
+  // Stream real-time price updates
+  rpc StreamPriceUpdates(StreamPriceUpdatesRequest) returns (stream PriceUpdate);
+}
+
+// Request for getting a single stock price
+message GetStockPriceRequest {
+  string symbol = 1;
+}
+
+// Response containing stock price information
+message GetStockPriceResponse {
+  string symbol = 1;
+  double price = 2;
+  string currency = 3;
+  int64 timestamp = 4;
+  double change = 5;
+  double change_percent = 6;
+}
+
+// Request for getting multiple stock prices
+message GetMultipleStockPricesRequest {
+  repeated string symbols = 1;
+}
+
+// Response containing multiple stock prices
+message GetMultipleStockPricesResponse {
+  repeated GetStockPriceResponse prices = 1;
+}
+
+// Request for streaming price updates
+message StreamPriceUpdatesRequest {
+  repeated string symbols = 1;
+}
+
+// Real-time price update message
+message PriceUpdate {
+  string symbol = 1;
+  double price = 2;
+  int64 timestamp = 3;
+  double volume = 4;
+}
