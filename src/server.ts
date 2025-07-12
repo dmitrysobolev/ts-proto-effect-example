@@ -1,4 +1,5 @@
 import { createServer } from "nice-grpc"
+import { Effect, pipe, Runtime, Console, Layer } from "effect"
 import {
   StockServiceDefinition,
   StockServiceImplementation,
@@ -8,6 +9,19 @@ import {
   GetMultipleStockPricesResponse,
   StreamPriceUpdatesRequest,
 } from "./generated/proto/stock"
+
+// Error types
+class StockNotFoundError {
+  readonly _tag = "StockNotFoundError"
+  constructor(readonly symbol: string) {}
+}
+
+class InvalidRequestError {
+  readonly _tag = "InvalidRequestError"  
+  constructor(readonly message: string) {}
+}
+
+type ServiceError = StockNotFoundError | InvalidRequestError
 
 // Mock stock data
 const mockStocks = new Map([
@@ -19,111 +33,192 @@ const mockStocks = new Map([
 ])
 
 // Generate random price fluctuation
-const generatePrice = (basePrice: number) => {
-  const variation = (Math.random() - 0.5) * 0.1 // ±5% variation
-  return basePrice * (1 + variation)
-}
+const generatePrice = (basePrice: number): Effect.Effect<number> =>
+  Effect.sync(() => {
+    const variation = (Math.random() - 0.5) * 0.1 // ±5% variation
+    return basePrice * (1 + variation)
+  })
 
 // Generate random change percentage
-const generateChange = () => (Math.random() - 0.5) * 10 // ±5% change
+const generateChange = (): Effect.Effect<number> =>
+  Effect.sync(() => (Math.random() - 0.5) * 10) // ±5% change
 
-// gRPC service implementation
-const stockServiceImpl: StockServiceImplementation = {
-  async getStockPrice(request: GetStockPriceRequest): Promise<GetStockPriceResponse> {
-    const { symbol } = request
+// Get stock data
+const getStock = (symbol: string): Effect.Effect<{ name: string; basePrice: number }, StockNotFoundError> =>
+  Effect.suspend(() => {
     const stock = mockStocks.get(symbol)
-    
-    if (!stock) {
-      throw new Error(`Stock symbol ${symbol} not found`)
-    }
+    return stock
+      ? Effect.succeed(stock)
+      : Effect.fail(new StockNotFoundError(symbol))
+  })
 
-    const price = generatePrice(stock.basePrice)
-    const change = generateChange()
-    
-    return {
-      symbol: symbol,
+// Effect-based service implementations
+const getStockPriceEffect = (request: GetStockPriceRequest): Effect.Effect<GetStockPriceResponse, ServiceError> =>
+  pipe(
+    Effect.all({
+      stock: getStock(request.symbol),
+      price: Effect.suspend(() => getStock(request.symbol)).pipe(
+        Effect.flatMap((stock) => generatePrice(stock.basePrice))
+      ),
+      change: generateChange(),
+    }),
+    Effect.map(({ price, change }) => ({
+      symbol: request.symbol,
       price: Math.round(price * 100) / 100,
       currency: "USD",
       timestamp: Date.now(),
       change: Math.round(change * 100) / 100,
       changePercent: Math.round(change * 10) / 10,
-    }
+    }))
+  )
+
+// Adapter to convert Effect to Promise for nice-grpc
+const runEffect = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
+  Runtime.runPromise(Runtime.defaultRuntime)(
+    pipe(
+      effect,
+      Effect.catchAll((error) => {
+        if (error instanceof StockNotFoundError) {
+          return Effect.fail(new Error(`Stock symbol ${error.symbol} not found`))
+        }
+        if (error instanceof InvalidRequestError) {
+          return Effect.fail(new Error(error.message))
+        }
+        return Effect.fail(new Error("Unknown error"))
+      })
+    )
+  )
+
+// gRPC service implementation
+const stockServiceImpl: StockServiceImplementation = {
+  async getStockPrice(request: GetStockPriceRequest): Promise<GetStockPriceResponse> {
+    return runEffect(getStockPriceEffect(request))
   },
 
   async getMultipleStockPrices(request: GetMultipleStockPricesRequest): Promise<GetMultipleStockPricesResponse> {
-    const { symbols } = request
-    const prices = symbols.map((symbol) => {
-      const stock = mockStocks.get(symbol)
-      
-      if (!stock) {
-        return {
-          symbol,
-          price: 0,
-          currency: "USD",
-          timestamp: Date.now(),
-          change: 0,
-          changePercent: 0,
-        }
-      }
-
-      const price = generatePrice(stock.basePrice)
-      const change = generateChange()
-      
-      return {
-        symbol,
-        price: Math.round(price * 100) / 100,
-        currency: "USD",
-        timestamp: Date.now(),
-        change: Math.round(change * 100) / 100,
-        changePercent: Math.round(change * 10) / 10,
-      }
-    })
+    const getMultiplePricesEffect = pipe(
+      Effect.all(
+        request.symbols.map((symbol) =>
+          pipe(
+            getStock(symbol),
+            Effect.flatMap((stock) =>
+              Effect.all({
+                price: generatePrice(stock.basePrice),
+                change: generateChange(),
+              })
+            ),
+            Effect.map(({ price, change }) => ({
+              symbol,
+              price: Math.round(price * 100) / 100,
+              currency: "USD",
+              timestamp: Date.now(),
+              change: Math.round(change * 100) / 100,
+              changePercent: Math.round(change * 10) / 10,
+            })),
+            Effect.catchAll(() =>
+              Effect.succeed({
+                symbol,
+                price: 0,
+                currency: "USD",
+                timestamp: Date.now(),
+                change: 0,
+                changePercent: 0,
+              })
+            )
+          )
+        )
+      ),
+      Effect.map((prices) => ({ prices }))
+    )
     
-    return { prices }
+    return runEffect(getMultiplePricesEffect)
   },
 
   async *streamPriceUpdates(request: StreamPriceUpdatesRequest) {
     const { symbols } = request
     
+    // Simple streaming implementation using Effect
     while (true) {
       await new Promise(resolve => setTimeout(resolve, 1000))
       
-      const symbol = symbols[Math.floor(Math.random() * symbols.length)]
-      const stock = symbol ? mockStocks.get(symbol) : undefined
+      const updateEffect = pipe(
+        Effect.sync(() => symbols[Math.floor(Math.random() * symbols.length)]),
+        Effect.filterOrFail(
+          (symbol): symbol is string => symbol !== undefined,
+          () => new InvalidRequestError("No symbol selected")
+        ),
+        Effect.flatMap((symbol) =>
+          pipe(
+            getStock(symbol),
+            Effect.flatMap((stock) =>
+              Effect.all({
+                symbol: Effect.succeed(symbol),
+                price: generatePrice(stock.basePrice),
+                volume: Effect.sync(() => Math.floor(Math.random() * 1000000)),
+              })
+            ),
+            Effect.map(({ symbol, price, volume }) => ({
+              symbol,
+              price: Math.round(price * 100) / 100,
+              timestamp: Date.now(),
+              volume,
+            }))
+          )
+        ),
+        Effect.catchAll(() => Effect.succeed(null))
+      )
       
-      if (!stock || !symbol) {
-        continue
-      }
+      const result = await Runtime.runPromise(Runtime.defaultRuntime)(updateEffect)
       
-      const price = generatePrice(stock.basePrice)
-      const volume = Math.floor(Math.random() * 1000000)
-      
-      yield {
-        symbol,
-        price: Math.round(price * 100) / 100,
-        timestamp: Date.now(),
-        volume,
+      if (result) {
+        yield result
       }
     }
   }
 }
 
-// Create and start server
-async function startServer() {
+// Server configuration
+interface ServerConfig {
+  readonly port: number
+}
+
+class ServerConfigService extends Effect.Tag("ServerConfig")<ServerConfigService, ServerConfig>() {}
+
+// Create and start server using Effect
+const startServerEffect = Effect.gen(function* () {
+  const config = yield* ServerConfigService
   const server = createServer()
   
   server.add(StockServiceDefinition, stockServiceImpl)
   
-  const port = 50051
-  await server.listen(`0.0.0.0:${port}`)
+  yield* Effect.tryPromise({
+    try: () => server.listen(`0.0.0.0:${config.port}`),
+    catch: (error) => new Error(`Failed to start server: ${error}`),
+  })
   
-  console.log(`gRPC Stock Price Server listening on port ${port}`)
-  console.log("Using real protobuf binary serialization")
-  console.log("Service: StockService")
-  console.log("Methods:")
-  console.log("  - GetStockPrice (unary)")
-  console.log("  - GetMultipleStockPrices (unary)")
-  console.log("  - StreamPriceUpdates (server streaming)")
-}
+  yield* Console.log(`gRPC Stock Price Server listening on port ${config.port}`)
+  yield* Console.log("Using real protobuf binary serialization")
+  yield* Console.log("Service: StockService")
+  yield* Console.log("Methods:")
+  yield* Console.log("  - GetStockPrice (unary)")
+  yield* Console.log("  - GetMultipleStockPrices (unary)")
+  yield* Console.log("  - StreamPriceUpdates (server streaming)")
+  
+  // Keep server running
+  yield* Effect.never
+})
 
-startServer().catch(console.error)
+// Server configuration layer
+const ServerConfigLive = Layer.succeed(
+  ServerConfigService,
+  { port: 50051 }
+)
+
+// Main program
+const program = startServerEffect.pipe(
+  Effect.provide(ServerConfigLive),
+  Effect.scoped
+)
+
+// Run the server
+Effect.runPromise(program).catch(console.error)
