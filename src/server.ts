@@ -1,5 +1,5 @@
 import { createServer } from "nice-grpc"
-import { Effect, pipe, Runtime, Console, Layer } from "effect"
+import { Effect, pipe, Runtime, Console, Layer, Data } from "effect"
 import {
   StockServiceDefinition,
   StockServiceImplementation,
@@ -11,15 +11,13 @@ import {
 } from "./generated/proto/stock"
 
 // Error types
-class StockNotFoundError {
-  readonly _tag = "StockNotFoundError"
-  constructor(readonly symbol: string) {}
-}
+class StockNotFoundError extends Data.TaggedError("StockNotFoundError")<{
+  readonly symbol: string
+}> {}
 
-class InvalidRequestError {
-  readonly _tag = "InvalidRequestError"  
-  constructor(readonly message: string) {}
-}
+class InvalidRequestError extends Data.TaggedError("InvalidRequestError")<{
+  readonly message: string
+}> {}
 
 type ServiceError = StockNotFoundError | InvalidRequestError
 
@@ -49,7 +47,7 @@ const getStock = (symbol: string): Effect.Effect<{ name: string; basePrice: numb
     const stock = mockStocks.get(symbol)
     return stock
       ? Effect.succeed(stock)
-      : Effect.fail(new StockNotFoundError(symbol))
+      : Effect.fail(new StockNotFoundError({ symbol }))
   })
 
 // Effect-based service implementations
@@ -145,7 +143,7 @@ const stockServiceImpl: StockServiceImplementation = {
         Effect.sync(() => symbols[Math.floor(Math.random() * symbols.length)]),
         Effect.filterOrFail(
           (symbol): symbol is string => symbol !== undefined,
-          () => new InvalidRequestError("No symbol selected")
+          () => new InvalidRequestError({ message: "No symbol selected" })
         ),
         Effect.flatMap((symbol) =>
           pipe(
