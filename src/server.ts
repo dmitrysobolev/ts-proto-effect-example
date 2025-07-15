@@ -1,5 +1,5 @@
 import { createServer } from "nice-grpc"
-import { Effect, pipe, Runtime, Console, Layer, Data } from "effect"
+import { Effect, pipe, Runtime, Layer, Data } from "effect"
 import {
   StockServiceDefinition,
   StockServiceImplementation,
@@ -194,13 +194,13 @@ const startServerEffect = Effect.gen(function* () {
     catch: (error) => new Error(`Failed to start server: ${error}`),
   })
   
-  yield* Console.log(`gRPC Stock Price Server listening on port ${config.port}`)
-  yield* Console.log("Using real protobuf binary serialization")
-  yield* Console.log("Service: StockService")
-  yield* Console.log("Methods:")
-  yield* Console.log("  - GetStockPrice (unary)")
-  yield* Console.log("  - GetMultipleStockPrices (unary)")
-  yield* Console.log("  - StreamPriceUpdates (server streaming)")
+  yield* Effect.logInfo(`gRPC Stock Price Server listening on port ${config.port}`)
+  yield* Effect.logInfo("Using real protobuf binary serialization")
+  yield* Effect.logInfo("Service: StockService")
+  yield* Effect.logInfo("Methods:")
+  yield* Effect.logInfo("  - GetStockPrice (unary)")
+  yield* Effect.logInfo("  - GetMultipleStockPrices (unary)")
+  yield* Effect.logInfo("  - StreamPriceUpdates (server streaming)")
   
   // Keep server running
   yield* Effect.never
@@ -219,4 +219,6 @@ const program = startServerEffect.pipe(
 )
 
 // Run the server
-Effect.runPromise(program).catch(console.error)
+Effect.runPromise(program).catch((error) => 
+  Effect.runSync(Effect.logError(`Server failed to start: ${error}`))
+)
