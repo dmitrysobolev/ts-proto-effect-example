@@ -17,6 +17,7 @@ src/generated/
 *.swp
 *.swo
 *~
+.lsp
 
 # OS
 .DS_Store
