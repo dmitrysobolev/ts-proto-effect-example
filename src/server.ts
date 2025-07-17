@@ -218,7 +218,25 @@ const program = startServerEffect.pipe(
   Effect.scoped
 )
 
-// Run the server
-Effect.runPromise(program).catch((error) => 
-  Effect.runSync(Effect.logError(`Server failed to start: ${error}`))
-)
+// Run the server only if not in test environment
+if (process.env.NODE_ENV !== 'test') {
+  Effect.runPromise(program).catch((error) => 
+    Effect.runSync(Effect.logError(`Server failed to start: ${error}`))
+  )
+}
+
+// Export for testing
+export {
+  StockNotFoundError,
+  InvalidRequestError,
+  generatePrice,
+  generateChange,
+  getStock,
+  getStockPriceEffect,
+  runEffect,
+  stockServiceImpl,
+  startServerEffect,
+  ServerConfigService,
+  ServerConfigLive,
+  program
+}
